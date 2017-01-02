@@ -8,12 +8,13 @@ from oauth2client import client
 from oauth2client import tools
 from datetime import date
 #########################################################################
+# Made for Python 3.5 and Google Drive API v3.
 # Usage: to replicate a Gogle Drive folder structure with all files, in your computer
 # python dl_gdrive_folder.py <Google drive folder source> <local computer folder destination>
 # Example:
 # Folder Structure at Google Drive:
 # F1
-	File0
+#	File0
 #	F11
 #		File1
 #	F12
@@ -31,7 +32,9 @@ from datetime import date
 # http://stackoverflow.com/questions/22092402/python-google-drive-api-list-the-entire-drive-file-tree
 # https://github.com/HatsuneMiku/googleDriveAccess
 #
-# Know Issues: don´t work with Google "Forms"
+# Know Issues: 
+#		- don´t work with Google "Forms" - fixed (simply skip those files)
+#		- downloads trashed files - fixed (don´t even consider them)
 #########################################################################
 
 #########################################################################
@@ -49,6 +52,7 @@ APPLICATION_NAME = 'Drive File API - Python'
 FOLDER_TYPE = 'application/vnd.google-apps.folder'
 to_dir=str(date.today())+"_drive_backup"
 global num_files
+global num_skiped
 
 try:
 	import argparse
@@ -79,7 +83,7 @@ def get_credentials():
 			credentials = tools.run_flow(flow, store, args)
 		else: # Needed only for compatibility with Python 2.6
 			credentials = tools.run(flow, store)
-		print('Storing credentials to ' + credential_path)
+		print("Storing credentials to {}".format(credential_path))
 	return credentials
 
 def prepDest(folder, spaces):
@@ -92,12 +96,13 @@ def prepDest(folder, spaces):
 			os.makedirs(folder)
 			return True
 	else:
-		if (args.lista or args.verbose):
-			print("{} Folder {} already exists".format(spaces, folder))
+		print("{} Folder {} already exists".format(spaces, folder))
 	return False
 
 def downloadFile(service, spaces, file_name, file_id, mimeType, dest_folder):
 # Function that performs the download of each file to the specified local folder
+	global num_skiped
+	valid = True
 	if (args.lista):
 		print("{} downloading file: {}, to folder {} \n".format(spaces, file_name, dest_folder))
 	else:
@@ -106,21 +111,32 @@ def downloadFile(service, spaces, file_name, file_id, mimeType, dest_folder):
 		request = service.files().get_media(fileId=file_id)
 		if "application/vnd.google-apps" in mimeType:
 			if args.verbose:
-				print("Google apps media type will be exported accordingly")
-			if "document" in mimeType:
+				print("Google apps media types will be exported accordingly")
+			if "form" in mimeType:
+				print("Google app Form: {} - cannot be downloaded. Skiping...".format(file_name))
+				valid = False
+				num_skiped += 1
+			elif "document" in mimeType:
 				request = service.files().export_media(fileId=file_id, mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 				file_name = file_name + ".docx"
+			elif "spreadsheet" in mimeType:
+				request = service.files().export_media(fileId=file_id, mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+				file_name = file_name + ".xlsx"	
+			elif "presentation" in mimeType:
+				request = service.files().export_media(fileId=file_id, mimeType='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+				file_name = file_name + ".pptx"	
 			else: 
 				request = service.files().export_media(fileId=file_id, mimeType='application/pdf')
 				file_name = file_name + ".pdf"
-		print("{}Downloading -- {}".format(spaces, file_name))
-		response = request.execute()
-		with open(os.path.join(dest_folder, file_name), "wb") as wer:
-			if args.verbose:
-				print("Writing file {} to folder {}.\n".format(file_name, dest_folder))
-			wer.write(response)
-			global num_files
-			num_files +=1
+		if valid:			
+			print("{}Downloading -- {}".format(spaces, file_name))
+			response = request.execute()
+			with open(os.path.join(dest_folder, file_name), "wb") as wer:
+				if args.verbose:
+					print("Writing file {} to folder {}.\n".format(file_name, dest_folder))
+				wer.write(response)
+				global num_files
+				num_files +=1
 
 def getFolderId(service, folderName):
 	query = "name contains '%s' and mimeType = '%s'" % (folderName, FOLDER_TYPE)
@@ -161,20 +177,22 @@ def getFolderFiles(service, folderId, folderName, dest_folder, depth):
 	d_folder = dest_folder +  "\\" + folderName
 	prepDest(d_folder, spaces)	
 	if (args.lista or args.verbose):
-		print('%s+%s\n%s	 %s\n' % (spaces, folderId, spaces, folderName))
+#		print('%s+%s\n%s	 %s\n' % (spaces, folderId, spaces, folderName))
+		print("{}+{}\n{}     {}\n".format(spaces, folderId, spaces, folderName))
 
 	# searching only for folders
-	query = "'%s' in parents and mimeType='%s'" % (folderId, FOLDER_TYPE)
+	query = "'%s' in parents and mimeType='%s' and trashed = false" % (folderId, FOLDER_TYPE)
 	entries = getlist(service, query, **{'pageSize': 1000})
 	for folder in entries['files']:
 		getFolderFiles(service, folder['id'], folder['name'], d_folder, depth+1)
 	
 	# searching only for files (notice que query is mimTye != FOLDER_TYPE
-	query = "'%s' in parents and mimeType!='%s'" % (folderId, FOLDER_TYPE)
+	query = "'%s' in parents and mimeType!='%s' and trashed = false" % (folderId, FOLDER_TYPE)
 	entries = getlist(service, query, **{'pageSize': 1000})
 	for f in entries['files']:
 		if (args.lista or args.verbose):
-			print('%s -ID: %s NAME: %s TYPE: %s' % (spaces, f['id'], f['name'], f['mimeType']))
+#			print('%s -ID: %s NAME: %s TYPE: %s' % (spaces, f['id'], f['name'], f['mimeType']))
+			print("{} -ID: {} NAME: {} TYPE: {}".format(spaces, f['id'], f['name'], f['mimeType']))
 			downloadFile(service, spaces, f['name'], f['id'], f['mimeType'], d_folder)
 	print("{} files downloaded so far\n".format(num_files))
 		
@@ -184,20 +202,21 @@ def getFolderFiles(service, folderId, folderName, dest_folder, depth):
 def main(basedir):
 	global num_files
 	num_files = 0
-	if args.verbose:
-		print("Downloading folder and files from: {} -> to: {}".format(from_dir, to_dir))
-		print("Connecting with Google Drive")
+	global num_skiped
+	num_skiped = 0
+
+	print("Downloading folder and files from: {} -> to: {}".format(from_dir, to_dir))
+	print("Connecting with Google Drive")
 
 	try:
 		credentials = get_credentials()
 		http = credentials.authorize(httplib2.Http())
 		service = discovery.build('drive', 'v3', http=http)	
 	except Exception: 
-		print("Error connecting to GDrive")
+		print("Error connecting to Google Drive")
 	else:
 	
-		if args.verbose:
-			print("Connected. Now let´s read the files")
+		print("Connected. Now let´s read the files")
 		if args.lista:
 			print("just listing folder and files from source")
 			prepDest(to_dir, "")
@@ -213,6 +232,8 @@ def main(basedir):
 			if not folderId is None:
 				getFolderFiles(service, folderId, from_dir, to_dir, 0)
 				print("{} total files downloaded.\n".format(num_files))
+				if num_skiped>0:
+					print("{} total skiped files, not downloaded.".format(num_skiped))
 			else:
 				print("Aborting. Source folder {} not found".format(from_dir))
 		else:
