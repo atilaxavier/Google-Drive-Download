@@ -23,6 +23,7 @@ from datetime import date
 #			FileB
 # To download everything from folder F211 to a local folder TST
 # python dl_gdrive_folder.py F211 TST	
+# It doesn´t work if you have more than one folder with the same name
 #########################################################################
 # Build from the works of :
 # Mark Culhane - google_drive_backup.py
@@ -33,13 +34,16 @@ from datetime import date
 # https://github.com/HatsuneMiku/googleDriveAccess
 #
 # Know Issues: 
+#		- wasn´t downloading files if verbose was not used - fixed.
 #		- don´t work with Google "Forms" - fixed (simply skip those files)
 #		- downloads trashed files - fixed (don´t even consider them)
 #########################################################################
 
 #########################################################################
 # Pre-requisites - Authorize API usage on google drive, and download/install google drive pyhton api. 
-# sudo pip install -I google-api-python-client==1.3.2 --ignore-installed six
+# Follow instructions on : https://developers.google.com/drive/v3/web/quickstart/python
+# To install python client on windows:
+# pip install --upgrade google-api-python-client
 # Authorize API https://developers.google.com/drive/v3/web/quickstart/python#step_1_turn_on_the_api_name
 # Download the client_secret.json to same dir as this script
 #########################################################################
@@ -179,6 +183,9 @@ def getFolderFiles(service, folderId, folderName, dest_folder, depth):
 	if (args.lista or args.verbose):
 #		print('%s+%s\n%s	 %s\n' % (spaces, folderId, spaces, folderName))
 		print("{}+{}\n{}     {}\n".format(spaces, folderId, spaces, folderName))
+	else:
+		print("Source Folder: {}\n".format(folderName))
+		
 
 	# searching only for folders
 	query = "'%s' in parents and mimeType='%s' and trashed = false" % (folderId, FOLDER_TYPE)
@@ -193,7 +200,7 @@ def getFolderFiles(service, folderId, folderName, dest_folder, depth):
 		if (args.lista or args.verbose):
 #			print('%s -ID: %s NAME: %s TYPE: %s' % (spaces, f['id'], f['name'], f['mimeType']))
 			print("{} -ID: {} NAME: {} TYPE: {}".format(spaces, f['id'], f['name'], f['mimeType']))
-			downloadFile(service, spaces, f['name'], f['id'], f['mimeType'], d_folder)
+		downloadFile(service, spaces, f['name'], f['id'], f['mimeType'], d_folder)
 	print("{} files downloaded so far\n".format(num_files))
 		
 		
